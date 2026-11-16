@@ -1,0 +1,30 @@
+{
+	"name": "create-sanitypress",
+	"version": "0.1.0",
+	"description": "Create a new SanityPress (Next.js + Sanity) website",
+	"license": "MIT",
+	"type": "module",
+	"bin": {
+		"create-sanitypress": "./index.js"
+	},
+	"files": [
+		"index.js",
+		"seed.js",
+		"telemetry.js"
+	],
+	"engines": {
+		"node": ">=20.12"
+	},
+	"keywords": [
+		"sanity",
+		"sanitypress",
+		"nextjs",
+		"template",
+		"create"
+	],
+	"homepage": "https://sanitypress.dev",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/sanitypress/create-sanitypress.git"
+	}
+}
