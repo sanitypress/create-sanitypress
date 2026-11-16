@@ -4,40 +4,41 @@
  */
 import { randomUUID } from 'node:crypto'
 
-// TODO: PostHog project API key (public, write-only "phc_..." token)
-const POSTHOG_KEY = ''
+// PostHog project API key (sanitypress.dev project). Public, write-only.
+const POSTHOG_KEY = 'phc_jrWpC322cDeXQL8UnuQDWEDxxqm3jAVQKO5WyKyKk0t'
 const POSTHOG_HOST = 'https://us.i.posthog.com'
 
 const env = process.env
 export const telemetryEnabled =
-	Boolean(POSTHOG_KEY) &&
-	!['1', 'true'].includes(env.DO_NOT_TRACK ?? '') &&
-	!['1', 'true'].includes(env.SANITYPRESS_TELEMETRY_DISABLED ?? '') &&
-	!env.CI
+  Boolean(POSTHOG_KEY) &&
+  !['1', 'true'].includes(env.DO_NOT_TRACK ?? '') &&
+  !['1', 'true'].includes(env.SANITYPRESS_TELEMETRY_DISABLED ?? '') &&
+  !env.CI &&
+  !process.argv.includes('--dry-run')
 
 const distinctId = randomUUID()
 
 /** @param {string} event @param {Record<string, unknown>} properties */
 export async function track(event, properties = {}) {
-	if (!telemetryEnabled) return
-	try {
-		await fetch(`${POSTHOG_HOST}/capture/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				api_key: POSTHOG_KEY,
-				event,
-				distinct_id: distinctId,
-				properties: {
-					...properties,
-					$process_person_profile: false,
-					os: process.platform,
-					node: process.versions.node,
-				},
-			}),
-			signal: AbortSignal.timeout(2000),
-		})
-	} catch {
-		// never block or fail the install on telemetry
-	}
+  if (!telemetryEnabled) return
+  try {
+    await fetch(`${POSTHOG_HOST}/capture/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: POSTHOG_KEY,
+        event,
+        distinct_id: distinctId,
+        properties: {
+          ...properties,
+          $process_person_profile: false,
+          os: process.platform,
+          node: process.versions.node,
+        },
+      }),
+      signal: AbortSignal.timeout(2000),
+    })
+  } catch {
+    // never block or fail the install on telemetry
+  }
 }

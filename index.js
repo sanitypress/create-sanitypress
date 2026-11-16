@@ -215,7 +215,7 @@ async function main() {
 
 	const dir = resolve(args.dir ?? (await ask('Project directory?', 'sanitypress')))
 
-	await track('create_started', props)
+	await track('cli_create_started', props)
 
 	// 1. Scaffold with Sanity's own initializer (login, project, dataset, env, install)
 	const [cmd, ...pre] = dlx(pm)
@@ -230,7 +230,7 @@ async function main() {
 	])
 
 	if (status !== 0 || (!dryRun && !existsSync(join(dir, 'package.json')))) {
-		await done('create_failed', { step: 'scaffold' })
+		await done('cli_create_failed', { step: 'scaffold' })
 		process.exit(status || 1)
 	}
 
@@ -257,7 +257,7 @@ async function main() {
 	const skills = installSkills({ dir, pm })
 	if (!skills) warn(`Skipped agent skills. Add them later with: npx skills add ${SKILLS_REPO}`)
 
-	await done('create_completed', { seeded, skills })
+	await done('cli_create_completed', { seeded, skills })
 
 	log()
 	info(styleText('bold', 'Your SanityPress site is ready!'))
@@ -272,6 +272,6 @@ async function main() {
 
 main().catch(async (err) => {
 	fail(err?.message ?? String(err))
-	await track('create_failed', { step: 'unexpected', version: VERSION })
+	await track('cli_create_failed', { step: 'unexpected', version: VERSION })
 	process.exit(1)
 })

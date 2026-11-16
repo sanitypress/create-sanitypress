@@ -38,7 +38,7 @@ Documents use fixed IDs and import with `--missing`, so existing content is neve
 
 ## Telemetry
 
-Sends anonymous events (`create_started`, `create_completed`, `create_failed`) with the CLI version, package manager, chosen options, OS and Node version. No names, paths, project IDs or tokens. Disabled in CI and with `DO_NOT_TRACK=1` or `SANITYPRESS_TELEMETRY_DISABLED=1`.
+Sends anonymous events (`cli_create_started`, `cli_create_completed`, `cli_create_failed`) with the CLI version, package manager, chosen options, OS and Node version. No names, paths, project IDs or tokens. Disabled in CI and with `DO_NOT_TRACK=1` or `SANITYPRESS_TELEMETRY_DISABLED=1`.
 
 ## Development
 
