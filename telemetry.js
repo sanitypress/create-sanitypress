@@ -16,6 +16,9 @@ export const telemetryEnabled =
   !env.CI &&
   !process.argv.includes('--dry-run')
 
+// Maintainer runs: set SANITYPRESS_INTERNAL=1 so they can be filtered out in PostHog
+const internal = ['1', 'true'].includes(env.SANITYPRESS_INTERNAL ?? '')
+
 const distinctId = randomUUID()
 
 /** @param {string} event @param {Record<string, unknown>} properties */
@@ -34,6 +37,7 @@ export async function track(event, properties = {}) {
           $process_person_profile: false,
           os: process.platform,
           node: process.versions.node,
+          internal,
         },
       }),
       signal: AbortSignal.timeout(2000),

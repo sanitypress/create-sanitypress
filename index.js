@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
@@ -106,19 +106,35 @@ function dlx(pm) {
 	return ['npx', '-y']
 }
 
+// Ctrl+C reaches both this process and the running child. While a child runs,
+// let it exit on its own and report the cancel afterwards (see run()); otherwise
+// cancel right away. `onCancel` is swapped in by main() once a run has started.
+let onCancel = () => process.exit(130)
+let childRunning = false
+let interrupted = false
+process.on('SIGINT', () => {
+	if (childRunning) interrupted = true
+	else onCancel()
+})
+
 let dryRun = false
-function run(cmd, args, cwd) {
+/** @returns {Promise<{ code: number, signal: string | null }>} */
+async function run(cmd, args, cwd) {
 	const pretty = [cmd, ...args].join(' ')
 	if (dryRun) {
 		log(styleText('dim', `$ ${pretty}${cwd ? `  (in ${cwd})` : ''}`))
-		return 0
+		return { code: 0, signal: null }
 	}
-	const { status } = spawnSync(cmd, args, {
-		cwd,
-		stdio: 'inherit',
-		shell: isWindows,
+	childRunning = true
+	const { code, signal } = await new Promise((done) => {
+		const child = spawn(cmd, args, { cwd, stdio: 'inherit', shell: isWindows })
+		child.on('error', () => done({ code: null, signal: null }))
+		child.on('close', (code, signal) => done({ code, signal }))
 	})
-	return status ?? 1
+	childRunning = false
+	// 130 = the child caught Ctrl+C itself and exited
+	if (interrupted || signal === 'SIGINT' || code === 130) await onCancel()
+	return { code: code ?? 1, signal }
 }
 
 async function ask(question, fallback) {
@@ -147,7 +163,7 @@ function readEnv(dir) {
 // ---------------------------------------------------------------------------
 // Steps
 
-function seed({ dir, kind, blog, projectId, dataset }) {
+async function seed({ dir, kind, blog, projectId, dataset }) {
 	if (kind === 'none') return true
 
 	const sanity = join(dir, 'node_modules', '.bin', isWindows ? 'sanity.cmd' : 'sanity')
@@ -171,19 +187,23 @@ function seed({ dir, kind, blog, projectId, dataset }) {
 	}
 
 	info(`Importing ${kind} starter content into "${dataset}"`)
-	const status = run(
-		sanity,
-		['datasets', 'import', source, '--project', projectId, '--dataset', dataset, '--missing'],
-		dir,
-	)
-	if (tmp) rmSync(tmp, { recursive: true, force: true })
-	return status === 0
+	try {
+		const { code } = await run(
+			sanity,
+			['datasets', 'import', source, '--project', projectId, '--dataset', dataset, '--missing'],
+			dir,
+		)
+		return code === 0
+	} finally {
+		if (tmp) rmSync(tmp, { recursive: true, force: true })
+	}
 }
 
-function installSkills({ dir, pm }) {
+async function installSkills({ dir, pm }) {
 	info(`Installing SanityPress agent skills (${SKILLS_REPO})`)
 	const [cmd, ...pre] = dlx(pm)
-	return run(cmd, [...pre, 'skills@latest', 'add', SKILLS_REPO, '--skill', '*', '-y'], dir) === 0
+	const { code } = await run(cmd, [...pre, 'skills@latest', 'add', SKILLS_REPO, '--skill', '*', '-y'], dir)
+	return code === 0
 }
 
 // ---------------------------------------------------------------------------
@@ -217,9 +237,20 @@ async function main() {
 
 	await track('cli_create_started', props)
 
+	let step = 'scaffold'
+	let cancelling = false
+	onCancel = async () => {
+		if (cancelling) process.exit(130) // second Ctrl+C: don't wait on telemetry
+		cancelling = true
+		log()
+		warn('Cancelled.')
+		await done('cli_create_cancelled', { step })
+		process.exit(130)
+	}
+
 	// 1. Scaffold with Sanity's own initializer (login, project, dataset, env, install)
 	const [cmd, ...pre] = dlx(pm)
-	const status = run(cmd, [
+	const { code, signal } = await run(cmd, [
 		...pre,
 		'create-sanity@latest',
 		`--template=${args.template ?? TEMPLATE}`,
@@ -229,9 +260,16 @@ async function main() {
 		...args.passthrough,
 	])
 
-	if (status !== 0 || (!dryRun && !existsSync(join(dir, 'package.json')))) {
-		await done('cli_create_failed', { step: 'scaffold' })
-		process.exit(status || 1)
+	const hasPackageJson = dryRun || existsSync(join(dir, 'package.json'))
+	if (code !== 0 || !hasPackageJson) {
+		await done('cli_create_failed', {
+			step,
+			// exit 0 without a package.json usually means a prompt was declined
+			reason: code !== 0 ? 'exit_code' : 'no_package_json',
+			exit_code: code,
+			signal,
+		})
+		process.exit(code || 1)
 	}
 
 	// 2. Starter content
@@ -241,10 +279,11 @@ async function main() {
 	const projectId = env.NEXT_PUBLIC_SANITY_PROJECT_ID
 	const dataset = env.NEXT_PUBLIC_SANITY_DATASET
 
+	step = 'seed'
 	let seeded = args.seed === 'none'
 	if (args.seed !== 'none') {
 		if (projectId && dataset) {
-			seeded = seed({ dir, kind: args.seed, blog: args.blog, projectId, dataset })
+			seeded = await seed({ dir, kind: args.seed, blog: args.blog, projectId, dataset })
 		} else {
 			warn('Could not read the project ID/dataset from .env.local, so starter content was skipped.')
 		}
@@ -254,7 +293,8 @@ async function main() {
 	}
 
 	// 3. Agent skills
-	const skills = installSkills({ dir, pm })
+	step = 'skills'
+	const skills = await installSkills({ dir, pm })
 	if (!skills) warn(`Skipped agent skills. Add them later with: npx skills add ${SKILLS_REPO}`)
 
 	await done('cli_create_completed', { seeded, skills })

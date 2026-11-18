@@ -1,6 +1,6 @@
 {
 	"name": "create-sanitypress",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Create a new SanityPress (Next.js + Sanity) website",
 	"license": "MIT",
 	"type": "module",
